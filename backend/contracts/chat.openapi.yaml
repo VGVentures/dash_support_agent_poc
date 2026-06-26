@@ -1,0 +1,50 @@
+openapi: 3.0.3
+info:
+  title: Dash support backend
+  version: 0.1.0
+paths:
+  /health:
+    get:
+      summary: Liveness check
+      responses:
+        '200':
+          description: Service is up
+  /chat:
+    post:
+      summary: Send a turn and get the assistant reply
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: The assistant reply and the updated message list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+components:
+  schemas:
+    ChatRequest:
+      type: object
+      required: [user_id, messages]
+      properties:
+        user_id:
+          type: string
+        messages:
+          type: array
+          description: Raw Anthropic message list, kept by the client for context.
+          items:
+            type: object
+    ChatResponse:
+      type: object
+      required: [reply, messages]
+      properties:
+        reply:
+          type: string
+        messages:
+          type: array
+          items:
+            type: object

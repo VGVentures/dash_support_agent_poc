@@ -1,0 +1,38 @@
+name: dash
+
+packages:
+  - apps/**
+
+scripts:
+  app:
+    description: Run the Flutter app against the local backend
+    run: cd apps/dash && flutter run -t lib/main_development.dart
+
+  backend:
+    description: Start the FastAPI backend on port 8000
+    run: cd backend && uvicorn app.main:app --reload --port 8000
+
+  analyze:
+    description: Analyze every Dart package in the workspace
+    run: dart analyze .
+
+  analyze:backend:
+    description: Lint the Python backend with ruff
+    run: cd backend && ruff check .
+
+  test:
+    description: Run Dart and Flutter tests
+    run: flutter test
+    exec:
+      concurrency: 1
+    packageFilters:
+      flutter: true
+      dirExists: test
+
+  test:backend:
+    description: Run the Python tests
+    run: cd backend && pytest
+
+  check:
+    description: Analyze and test both sides
+    run: melos run analyze && melos run analyze:backend && melos run test && melos run test:backend

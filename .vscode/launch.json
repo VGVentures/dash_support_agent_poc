@@ -1,0 +1,30 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "chrome",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "apps/dash",
+      "program": "lib/main_development.dart",
+      "deviceId": "chrome",
+      "args": [
+        "--dart-define",
+        "BASE_URL=http://localhost:8000",
+        "--web-port",
+        "5000"
+      ]
+    },
+    {
+      "name": "mobile",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "apps/dash",
+      "program": "lib/main_development.dart",
+      "args": [
+        "--dart-define",
+        "BASE_URL=http://localhost:8000"
+      ]
+    }
+  ]
+}
