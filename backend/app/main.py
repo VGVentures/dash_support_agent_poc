@@ -93,6 +93,7 @@ def chat(req: ChatRequest) -> dict:
     messages = req.messages
     max_iterations = 10
     iteration = 0
+    consecutive_non_retryable = 0
 
     while iteration < max_iterations:
         iteration += 1
@@ -115,6 +116,7 @@ def chat(req: ChatRequest) -> dict:
             return {"reply": reply, "messages": messages}
 
         tool_results = []
+
         for block in response.content:
             if block.type != "tool_use":
                 continue
@@ -125,28 +127,35 @@ def chat(req: ChatRequest) -> dict:
                 result = post_hook(block.name, safe_input, raw, ctx)
                 content = json.dumps(result)
                 is_error = False
+                consecutive_non_retryable = 0
             except ValidationFailed as validation_err:
                 content = json.dumps({
                     "error": "validation_failed",
                     "message": validation_err.message,
                     "details": validation_err.errors,
+                    "retryable": False,
                 })
                 is_error = True
+                consecutive_non_retryable += 1
                 log.warning("validation failed: %s errors=%s", block.name, validation_err.errors)
             except ToolBlocked as blocked:
                 content = json.dumps({
                     "error": "tool_blocked",
                     "message": str(blocked),
+                    "retryable": False,
                 })
                 is_error = True
+                consecutive_non_retryable += 1
                 log.warning("tool blocked: %s reason=%s", block.name, blocked)
             except Exception as error:  # noqa: BLE001
                 log.exception("tool failed: %s", block.name)
                 content = json.dumps({
                     "error": "tool_error",
                     "message": str(error),
+                    "retryable": True,
                 })
                 is_error = True
+                consecutive_non_retryable = 0
 
             tool_results.append(
                 {
@@ -158,6 +167,13 @@ def chat(req: ChatRequest) -> dict:
             )
 
         messages.append({"role": "user", "content": tool_results})
+
+        if consecutive_non_retryable >= 2:
+            reply = (
+                "I've encountered issues that cannot be resolved automatically. "
+                "Please escalate this to a human agent for further assistance."
+            )
+            return {"reply": reply, "messages": messages}
 
     return {
         "reply": "I've reached the maximum number of tool calls. Please escalate this conversation to a human agent.",

@@ -28,28 +28,31 @@ ProcessRefundInput(order_id="", amount=-50, reason="")
 
 ---
 
-## 2. Structured Error Responses
+## 2. Structured Error Responses with Retryability
 
-**What:** All tool errors now return JSON with explicit error types.
+**What:** All tool errors now return JSON with explicit error types and a `retryable` flag.
 
 **Files:**
 - `backend/app/main.py`: Added `_validate_tool_input()` and updated error handling
 
 **Error Types:**
-- `validation_failed`: Input validation failed (includes field-level details)
-- `tool_blocked`: Pre-hook blocked the tool (policy violation)
-- `tool_error`: Tool crashed (rare, includes message)
+- `validation_failed` (retryable: false): Input validation failed — Claude needs to change its approach
+- `tool_blocked` (retryable: false): Pre-hook blocked the tool (policy violation) — escalate instead
+- `tool_error` (retryable: true): Tool crashed — likely transient, safe to retry
 
 **Example:**
 ```json
 {
   "error": "validation_failed",
   "message": "validation failed for process_refund",
-  "details": ["amount: amount must be greater than zero"]
+  "details": ["amount: amount must be greater than zero"],
+  "retryable": false
 }
 ```
 
-Claude can now parse these and retry with different inputs instead of being confused.
+Claude can now parse these and decide: retry with different inputs vs. escalate to human.
+
+**Smart Exit:** If Claude gets 2 consecutive non-retryable errors, the loop immediately escalates instead of burning iterations on approaches that won't work.
 
 ---
 
