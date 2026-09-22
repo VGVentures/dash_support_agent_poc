@@ -1,14 +1,14 @@
 """Test the enhancements: validation, state enforcement, error handling."""
 
 import json
-from backend.app.tools import (
+from backend.agent.tools import (
     GetCustomerInput,
     LookupOrderInput,
     GetOrdersInput,
     ProcessRefundInput,
     EscalateToHumanInput,
 )
-from backend.app.hooks import pre_hook, post_hook, ToolBlocked
+from backend.agent.hooks import pre_hook, post_hook, ToolBlocked
 from pydantic import ValidationError
 
 print("=" * 60)
@@ -97,7 +97,7 @@ print("Testing Order Sorting")
 print("=" * 60)
 
 # Test 9: Orders are sorted by date, most recent first
-from backend.app.tools import get_orders
+from backend.agent.tools import get_orders
 
 result = get_orders("C-1001", max_items=10)
 if result["found"]:

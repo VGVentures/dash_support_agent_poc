@@ -1,7 +1,7 @@
-"""Dash support backend.
+"""The support agent.
 
 Holds the Anthropic key, runs the tool-use loop, and applies the hooks.
-Run locally with: uvicorn app.main:app --reload --port 8000
+Knows nothing about HTTP — the API layer calls run_conversation().
 """
 
 import json
@@ -10,9 +10,7 @@ import os
 
 import anthropic
 from dotenv import load_dotenv
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from .hooks import ToolBlocked, ValidationFailed, post_hook, pre_hook
 from .tools import (
@@ -45,26 +43,6 @@ SYSTEM = (
 # Reads ANTHROPIC_API_KEY from the environment.
 client = anthropic.Anthropic()
 
-app = FastAPI(title="Dash support backend")
-
-# Open CORS for local development. Lock this down before shipping.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-class ChatRequest(BaseModel):
-    user_id: str
-    messages: list
-
-
-@app.get("/health")
-def health() -> dict:
-    return {"status": "ok", "model": MODEL}
-
 
 def _validate_tool_input(tool_name: str, tool_input: dict) -> dict:
     """Validate tool input using Pydantic models."""
@@ -87,10 +65,8 @@ def _validate_tool_input(tool_name: str, tool_input: dict) -> dict:
         raise ValidationFailed(f"validation failed for {tool_name}", errors)
 
 
-@app.post("/chat")
-def chat(req: ChatRequest) -> dict:
-    ctx = {"user_id": req.user_id}
-    messages = req.messages
+def run_conversation(user_id: str, messages: list) -> dict:
+    ctx = {"user_id": user_id}
     max_iterations = 10
     iteration = 0
     consecutive_non_retryable = 0

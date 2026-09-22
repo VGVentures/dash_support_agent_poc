@@ -10,7 +10,7 @@ scripts:
 
   backend:
     description: Start the FastAPI backend on port 8000
-    run: cd backend && uvicorn app.main:app --reload --port 8000
+    run: cd backend && uvicorn api.main:app --reload --port 8000
 
   analyze:
     description: Analyze every Dart package in the workspace
