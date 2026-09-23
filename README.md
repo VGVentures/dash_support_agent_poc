@@ -149,22 +149,6 @@ topics, tells it to verify identity before refunding, and to escalate
 immediately when a customer expresses frustration or asks for a human —
 regardless of phrasing.
 
-## Evals
-
-`backend/evals/` runs full conversations through the real agent and grades
-behavior against invariants (stays on topic, verifies identity before a
-refund, escalates when appropriate) rather than exact string matches, since
-model output isn't deterministic. Results write to `results.json` plus a PDF
-report in `evals/`, always relative to the eval file's own location so it
-works regardless of your cwd.
-
-```bash
-melos run evals            # single model, PDF report
-melos run evals:compare    # runs the suite once per model, compares pass rate + latency
-```
-
-These cost real API calls and are excluded from `melos run check`.
-
 ## Melos scripts
 
 Defined under the `melos:` key in [`pubspec.yaml`](pubspec.yaml).
