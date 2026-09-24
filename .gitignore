@@ -16,3 +16,12 @@ venv/
 
 # Env and secrets
 .env
+
+# Eval output
+backend/evals/results.json
+
+# Article
+article/*
+
+# Claude Output
+Claude outputs/*

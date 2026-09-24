@@ -1,5 +1,8 @@
-import 'package:dash_support/chat/chat.dart';
+import 'dart:math' as math;
+
 import 'package:chat_repository/chat_repository.dart';
+import 'package:dash_support/app/app.dart';
+import 'package:dash_support/chat/chat.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
@@ -41,7 +44,23 @@ class _ChatViewState extends State<ChatView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Dash support')),
+      appBar: AppBar(
+        title: const Text('Dash support'),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 16),
+            child: CircleAvatar(
+              radius: 16,
+              backgroundColor: vgvBlue,
+              child: Icon(
+                Icons.support_agent,
+                color: vgvWhite,
+                size: 18,
+              ),
+            ),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Expanded(
@@ -52,6 +71,10 @@ class _ChatViewState extends State<ChatView> {
                     ..hideCurrentSnackBar()
                     ..showSnackBar(
                       SnackBar(
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                         content: Text(state.error ?? 'Something went wrong'),
                       ),
                     );
@@ -62,6 +85,9 @@ class _ChatViewState extends State<ChatView> {
               builder: (context, state) {
                 final isLoading = state.status == ChatStatus.loading;
                 final count = state.messages.length + (isLoading ? 1 : 0);
+                if (state.messages.isEmpty && !isLoading) {
+                  return const _EmptyState();
+                }
                 return SelectionArea(
                   child: ListView.builder(
                     controller: _scrollController,
@@ -85,6 +111,44 @@ class _ChatViewState extends State<ChatView> {
   }
 }
 
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircleAvatar(
+              radius: 28,
+              backgroundColor: vgvBlue.withValues(alpha: 0.15),
+              child: const Icon(Icons.support_agent, color: vgvBlue, size: 28),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'How can I help?',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Ask about an order, a refund, or anything else.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: scheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({required this.message});
 
@@ -94,22 +158,29 @@ class _MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final isUser = message.role == ChatRole.user;
     final scheme = Theme.of(context).colorScheme;
-    final background =
-        isUser ? scheme.primaryContainer : scheme.surfaceContainerHighest;
-    final foreground =
-        isUser ? scheme.onPrimaryContainer : scheme.onSurface;
+    final background = isUser
+        ? vgvBlue
+        : (scheme.brightness == Brightness.dark
+            ? const Color(0xFF141B3D)
+            : const Color(0xFFF2F3FA));
+    final foreground = isUser ? vgvWhite : scheme.onSurface;
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final maxWidth = (constraints.maxWidth * 0.8).clamp(200.0, 600.0);
           return Container(
-            margin: const EdgeInsets.symmetric(vertical: 4),
-            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.symmetric(vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             constraints: BoxConstraints(maxWidth: maxWidth),
             decoration: BoxDecoration(
               color: background,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(20),
+                topRight: const Radius.circular(20),
+                bottomLeft: Radius.circular(isUser ? 20 : 4),
+                bottomRight: Radius.circular(isUser ? 4 : 20),
+              ),
             ),
             child: isUser
                 ? Text(message.text, style: TextStyle(color: foreground))
@@ -124,21 +195,80 @@ class _MessageBubble extends StatelessWidget {
   }
 }
 
-class _TypingIndicator extends StatelessWidget {
+class _TypingIndicator extends StatefulWidget {
   const _TypingIndicator();
 
   @override
+  State<_TypingIndicator> createState() => _TypingIndicatorState();
+}
+
+class _TypingIndicatorState extends State<_TypingIndicator>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final dotColor = scheme.onSurfaceVariant;
+    final background = scheme.brightness == Brightness.dark
+        ? const Color(0xFF141B3D)
+        : const Color(0xFFF2F3FA);
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.all(12),
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(12),
+          color: background,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+            bottomRight: Radius.circular(20),
+            bottomLeft: Radius.circular(4),
+          ),
         ),
-        child: const SizedBox(width: 28, child: Text('...')),
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) {
+            return SizedBox(
+              width: 32,
+              height: 8,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: List.generate(3, (i) {
+                  final t = (_controller.value - i * 0.2) % 1.0;
+                  final bounce = math.sin(t * math.pi).clamp(0.0, 1.0);
+                  return Transform.translate(
+                    offset: Offset(0, -4 * bounce),
+                    child: Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: dotColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -155,10 +285,16 @@ class _Composer extends StatelessWidget {
     final isLoading = context.select(
       (ChatBloc bloc) => bloc.state.status == ChatStatus.loading,
     );
+    final scheme = Theme.of(context).colorScheme;
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          border: Border(top: BorderSide(color: scheme.outlineVariant)),
+        ),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Expanded(
               child: TextField(
@@ -169,14 +305,13 @@ class _Composer extends StatelessWidget {
                 onSubmitted: (_) => onSend(),
                 decoration: const InputDecoration(
                   hintText: 'Ask about an order or refund',
-                  border: OutlineInputBorder(),
                 ),
               ),
             ),
             const SizedBox(width: 8),
             IconButton.filled(
               onPressed: isLoading ? null : onSend,
-              icon: const Icon(Icons.send),
+              icon: const Icon(Icons.arrow_upward),
             ),
           ],
         ),

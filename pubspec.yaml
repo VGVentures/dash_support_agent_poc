@@ -1,2 +1,65 @@
 name: dash_workspace
 description: A monorepo workspace for the Dash project
+publish_to: none
+
+environment:
+  sdk: ^3.6.0
+
+workspace:
+  - apps/dash
+  - apps/packages/chat_repository
+
+dev_dependencies:
+  melos: ^7.8.0
+
+melos:
+  ide:
+    intellij:
+      enabled: false
+
+  scripts:
+    app:
+      description: Run the Flutter app against the local backend
+      run: cd apps/dash && flutter run -t lib/main_development.dart
+
+    backend:
+      description: Start the FastAPI backend on port 8000
+      run: cd backend && uvicorn api.main:app --reload --port 8000
+
+    analyze:
+      description: Analyze every Dart package in the workspace
+      run: dart analyze .
+
+    analyze:backend:
+      description: Lint the Python backend with ruff
+      run: cd backend && ruff check .
+
+    test:
+      description: Run Dart and Flutter tests
+      run: flutter test
+      exec:
+        concurrency: 1
+      packageFilters:
+        flutter: true
+        dirExists: test
+
+    test:backend:
+      description: Run the Python tests
+      run: cd backend && pytest
+
+    evals:
+      description: >-
+        Run behavioral evals against the live agent and build the PDF report
+        (real Anthropic API calls, costs tokens, not part of "check")
+      run: cd backend && python3 evals/run_evals.py
+
+    evals:compare:
+      description: >-
+        Run the evals across multiple models (e.g. Sonnet vs. Haiku) and
+        build the comparison PDF report (real Anthropic API calls, costs
+        tokens, not part of "check")
+      run: cd backend && python3 evals/compare_models.py
+
+    check:
+      description: Analyze and test both sides
+      run: melos run analyze && melos run analyze:backend && melos run test && melos run test:backend

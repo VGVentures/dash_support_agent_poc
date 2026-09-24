@@ -37,7 +37,11 @@ SYSTEM = (
     "and escalate to a human when a request is out of policy. "
     "When a user expresses frustration, demands to speak with someone else, "
     "or clearly wants escalation (regardless of how they phrase it), gather essential info "
-    "(customer id and order id if relevant) then call escalate_to_human immediately."
+    "(customer id and order id if relevant) then call escalate_to_human immediately. "
+    "Only help with Dash customer support topics: orders, refunds, and accounts. "
+    "If asked about anything else (general knowledge, other companies, coding help, "
+    "math, etc.), briefly decline and steer the conversation back to what you can "
+    "help with. Never answer the off-topic question itself."
 )
 
 # Reads ANTHROPIC_API_KEY from the environment.
@@ -65,7 +69,7 @@ def _validate_tool_input(tool_name: str, tool_input: dict) -> dict:
         raise ValidationFailed(f"validation failed for {tool_name}", errors)
 
 
-def run_conversation(user_id: str, messages: list) -> dict:
+def run_conversation(user_id: str, messages: list, model: str = MODEL) -> dict:
     ctx = {"user_id": user_id}
     max_iterations = 10
     iteration = 0
@@ -74,7 +78,7 @@ def run_conversation(user_id: str, messages: list) -> dict:
     while iteration < max_iterations:
         iteration += 1
         response = client.messages.create(
-            model=MODEL,
+            model=model,
             max_tokens=1024,
             system=SYSTEM,
             tools=TOOLS,
