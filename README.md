@@ -5,12 +5,16 @@ loop. The app never holds the Anthropic API key — it only ever talks to the
 backend over HTTP. The backend owns the key, the tool loop, and the
 validation and audit hooks around every tool call.
 
+![Dash support chat app demo](docs/demo.gif)
+
 ## How a message flows
 
-1. The Flutter app posts `{ user_id, messages }` to `POST /chat`.
+1. The Flutter app posts `{ user_id, conversation_id, messages }` to
+   `POST /chat`. `conversation_id` is empty on the first turn.
 2. [`agent/core.py`](backend/agent/core.py) runs `run_conversation()`: it
-   calls the Anthropic API with the conversation, the system prompt, and the
-   five tool schemas, up to 10 iterations.
+   loads the server-side state for that conversation (or starts a new one),
+   then calls the Anthropic API with the conversation, the system prompt, and
+   the five tool schemas, up to 10 iterations.
 3. When Claude asks for a tool, the input is validated against a Pydantic
    model, passed through `pre_hook` (auth check, refund policy, identity
    verification), run, then passed through `post_hook` (marks the customer
@@ -19,7 +23,8 @@ validation and audit hooks around every tool call.
    a row (validation failures, blocked calls) end the conversation early with
    a message telling the user to escalate, instead of burning iterations.
 5. The loop ends when Claude replies with text instead of a tool call, and
-   the reply plus full message history go back to the app.
+   the reply, the full message history, and the `conversation_id` go back to
+   the app, which sends the id on every later turn.
 
 ## Layout
 
@@ -128,7 +133,7 @@ marked spots for a real database, payment provider, and help desk).
 | `get_customer` | Look up a customer by id or email. Verifying identity here unlocks refunds. |
 | `lookup_order` | Fetch one order, optionally confirming it belongs to a given customer. |
 | `get_orders` | List a customer's recent orders, newest first, up to `max_items`. |
-| `process_refund` | Refund an order. Rejects orders that don't exist, aren't refundable, or where the amount exceeds the order total. |
+| `process_refund` | Refund an order. Rejects orders that don't exist, are still in transit, aren't refundable, or where the amount exceeds the order total. |
 | `escalate_to_human` | Create a help desk ticket and hand off the conversation. |
 
 ### Hooks
@@ -142,12 +147,25 @@ marked spots for a real database, payment provider, and help desk).
   `get_customer` succeeds, and appends successful refunds to an in-memory
   audit trail.
 
+The state the hooks read (`ctx`, holding `customer_verified`) lives on the
+server in `_SESSIONS` in [`agent/core.py`](backend/agent/core.py), keyed by
+`conversation_id`. That way verification from one turn still counts on the
+next, and the client can't forge it by editing the message history. An
+unknown id, or one that belongs to a different `user_id`, starts a fresh
+conversation. `_SESSIONS` is in memory, so restarting the backend clears it.
+
 ### System prompt
 
 The system prompt in `core.py` scopes the agent to Dash order/refund/account
 topics, tells it to verify identity before refunding, and to escalate
 immediately when a customer expresses frustration or asks for a human —
 regardless of phrasing.
+
+It also covers the refund edge cases. When a customer reports a technical
+problem, the agent asks whether they want a repair or a refund before doing
+anything else, and a repair goes to `escalate_to_human`. A refund blocked
+because the order is in transit gets a "wait for delivery" answer, and one
+blocked by the limit gets escalated.
 
 ## Melos scripts
 
