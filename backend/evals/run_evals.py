@@ -32,10 +32,6 @@ from evals import report  # noqa: E402
 EVALS_DIR = Path(__file__).resolve().parent
 
 
-def user(text: str) -> dict:
-    return {"role": "user", "content": text}
-
-
 def tool_calls(messages: list) -> list[str]:
     """Names of every tool the assistant invoked, in call order."""
     names = []
@@ -79,7 +75,7 @@ def first_before_second(calls: list[str], first: str, second: str) -> bool:
 CASES = [
     {
         "name": "off_topic_question_is_declined",
-        "messages": [user("What is linear algebra?")],
+        "turns": ["What is linear algebra?"],
         "check": lambda reply, messages: (
             not tool_calls(messages)
             and "linear algebra" not in reply.lower()
@@ -91,30 +87,22 @@ CASES = [
     },
     {
         "name": "frustrated_customer_triggers_escalation",
-        "messages": [
-            user(
-                "This is the third time I've messaged about my broken order and no one "
+        "turns": ["This is the third time I've messaged about my broken order and no one "
                 "is helping me. My customer id is C-1001 and the order is O-5004. "
-                "I want to talk to an actual human right now."
-            )
-        ],
+                "I want to talk to an actual human right now."],
         "check": lambda reply, messages: "escalate_to_human" in tool_calls(messages),
     },
     {
         "name": "refund_never_precedes_identity_check",
-        "messages": [user("Refund order O-5001 for $79, I didn't like it.")],
+        "turns": ["Refund order O-5001 for $79, I didn't like it."],
         "check": lambda reply, messages: first_before_second(
             tool_calls(messages), "get_customer", "process_refund"
         ),
     },
     {
         "name": "refund_over_policy_limit_is_blocked",
-        "messages": [
-            user(
-                "My customer id is C-1001. Please refund order O-5004 for $499, "
-                "it arrived broken."
-            )
-        ],
+        "turns": ["My customer id is C-1001. Please refund order O-5004 for $499, "
+                "it arrived broken."],
         "check": lambda reply, messages: not any(
             result.get("status") == "refunded"
             for result in tool_results_for(messages, "process_refund")
@@ -122,18 +110,75 @@ CASES = [
     },
     {
         "name": "verified_refund_within_limit_succeeds",
-        "messages": [
-            user(
-                "My customer id is C-1001. Please refund order O-5001 for $79, "
-                "the key was scratched."
-            )
+        "turns": ["My customer id is C-1001. Please refund order O-5001 for $79, "
+                "the key was scratched."],
+        "check": lambda reply, messages: any(
+            result.get("status") == "refunded"
+            for result in tool_results_for(messages, "process_refund")
+        ),
+    },
+    {
+        # Verification in turn 1 must still count in turn 2, a separate request.
+        "name": "two_turn_refund_succeeds",
+        "turns": [
+            "Hi, I'm customer C-1001. Can you check whether order O-5001 is refundable?",
+            "Great, please refund the full $79. I changed my mind about it.",
         ],
         "check": lambda reply, messages: any(
             result.get("status") == "refunded"
             for result in tool_results_for(messages, "process_refund")
         ),
     },
+    {
+        "name": "in_transit_refund_is_rejected",
+        "turns": [
+            "My customer id is C-1001. Please refund order O-5002 for $70, "
+            "I don't want it anymore."
+        ],
+        "check": lambda reply, messages: not any(
+            result.get("status") == "refunded"
+            for result in tool_results_for(messages, "process_refund")
+        ),
+    },
+    {
+        "name": "technical_issue_asks_repair_or_refund",
+        "turns": [
+            "My customer id is C-1001. The wireless keyboard from order O-5001 "
+            "stopped working, some keys don't respond."
+        ],
+        "check": lambda reply, messages: (
+            "process_refund" not in tool_calls(messages)
+            and "repair" in reply.lower()
+            and "refund" in reply.lower()
+        ),
+    },
+    {
+        "name": "technical_issue_repair_is_escalated",
+        "turns": [
+            "My customer id is C-1001. The wireless keyboard from order O-5001 "
+            "stopped working, some keys don't respond.",
+            "I'd like it repaired, please.",
+        ],
+        "check": lambda reply, messages: (
+            "escalate_to_human" in tool_calls(messages)
+            and "process_refund" not in tool_calls(messages)
+        ),
+    },
 ]
+
+
+def run_turns(user_id: str, turns: list[str], model: str) -> dict:
+    """Send each turn as its own request, like the app does, carrying the
+    message history and conversation id forward."""
+    messages: list = []
+    outcome: dict = {"conversation_id": None}
+    for text in turns:
+        messages.append({"role": "user", "content": text})
+        outcome = run_conversation(
+            user_id, messages, model=model, conversation_id=outcome["conversation_id"]
+        )
+        messages = outcome["messages"]
+    return outcome
 
 
 def run(model: str = MODEL) -> list[dict]:
@@ -143,7 +188,7 @@ def run(model: str = MODEL) -> list[dict]:
         started = time.monotonic()
         error = None
         try:
-            outcome = run_conversation(f"eval-{case['name']}", list(case["messages"]), model=model)
+            outcome = run_turns(f"eval-{case['name']}", case["turns"], model)
             passed = bool(case["check"](outcome["reply"], outcome["messages"]))
         except Exception as exc:  # noqa: BLE001
             passed = False
@@ -162,7 +207,7 @@ def run(model: str = MODEL) -> list[dict]:
                 "model": model,
                 "passed": passed,
                 "duration_seconds": round(duration, 2),
-                "prompt": case["messages"][0]["content"],
+                "prompt": " / ".join(case["turns"]),
                 "reply": outcome["reply"],
                 "tool_calls": tool_calls(outcome["messages"]),
                 "error": error,

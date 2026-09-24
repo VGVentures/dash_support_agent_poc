@@ -33,6 +33,12 @@ components:
       properties:
         user_id:
           type: string
+        conversation_id:
+          type: string
+          nullable: true
+          description: >-
+            Id from the previous ChatResponse. Omit it to start a new
+            conversation. The server keeps per-conversation state under it.
         messages:
           type: array
           description: Raw Anthropic message list, kept by the client for context.
@@ -40,10 +46,13 @@ components:
             type: object
     ChatResponse:
       type: object
-      required: [reply, messages]
+      required: [reply, messages, conversation_id]
       properties:
         reply:
           type: string
+        conversation_id:
+          type: string
+          description: Send this back on the next turn.
         messages:
           type: array
           items:

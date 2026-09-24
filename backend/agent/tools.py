@@ -249,6 +249,12 @@ def process_refund(order_id: str, amount: float, reason: str) -> dict:
     order = _ORDERS.get(order_id.strip())
     if order is None:
         return {"status": "rejected", "reason": "order not found", "order_id": order_id}
+    if order["status"] == "shipped":
+        return {
+            "status": "rejected",
+            "reason": "order is still in transit, it can be refunded once delivered",
+            "order_id": order_id,
+        }
     if not order["refundable"]:
         return {"status": "rejected", "reason": "order is not refundable", "order_id": order_id}
     if amount <= 0 or amount > order["total"]:
@@ -350,7 +356,9 @@ TOOLS = [
         "name": "process_refund",
         "description": (
             "Issue a refund for an order. Only call after confirming the order exists, "
-            "is refundable, and the amount is at most the order total."
+            "is delivered (not in transit), is refundable, and the amount is at most "
+            "the order total. If the customer reported a technical problem, first ask "
+            "whether they want a repair or a refund."
         ),
         "input_schema": {
             "type": "object",

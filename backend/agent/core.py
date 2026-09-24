@@ -7,6 +7,7 @@ Knows nothing about HTTP — the API layer calls run_conversation().
 import json
 import logging
 import os
+import uuid
 
 import anthropic
 from dotenv import load_dotenv
@@ -38,6 +39,13 @@ SYSTEM = (
     "When a user expresses frustration, demands to speak with someone else, "
     "or clearly wants escalation (regardless of how they phrase it), gather essential info "
     "(customer id and order id if relevant) then call escalate_to_human immediately. "
+    "If the customer reports a technical problem with a product (it does not work, "
+    "malfunctions, or is defective), ask whether they want a repair or a refund before "
+    "doing anything else. If they choose a repair, call escalate_to_human with a summary "
+    "of the repair request. If they choose a refund, follow the normal refund steps. "
+    "Refunds are blocked for orders still in transit and for amounts over the refund "
+    "limit. Tell the customer to wait for delivery in the first case, and escalate to a "
+    "human in the second. "
     "Only help with Dash customer support topics: orders, refunds, and accounts. "
     "If asked about anything else (general knowledge, other companies, coding help, "
     "math, etc.), briefly decline and steer the conversation back to what you can "
@@ -46,6 +54,22 @@ SYSTEM = (
 
 # Reads ANTHROPIC_API_KEY from the environment.
 client = anthropic.Anthropic()
+
+# Hook state per conversation (e.g. customer_verified), kept on the server so it
+# survives across /chat requests and the client can't forge it.
+# In-memory: replace with Redis or your datastore.
+_SESSIONS: dict[str, dict] = {}
+
+
+def _session_for(conversation_id: str | None, user_id: str) -> tuple[str, dict]:
+    """Return the (conversation_id, ctx) for this request, starting a new
+    conversation when the id is missing, unknown, or belongs to another user."""
+    ctx = _SESSIONS.get(conversation_id) if conversation_id else None
+    if ctx is None or ctx["user_id"] != user_id:
+        conversation_id = uuid.uuid4().hex
+        ctx = {"user_id": user_id}
+        _SESSIONS[conversation_id] = ctx
+    return conversation_id, ctx
 
 
 def _validate_tool_input(tool_name: str, tool_input: dict) -> dict:
@@ -69,8 +93,13 @@ def _validate_tool_input(tool_name: str, tool_input: dict) -> dict:
         raise ValidationFailed(f"validation failed for {tool_name}", errors)
 
 
-def run_conversation(user_id: str, messages: list, model: str = MODEL) -> dict:
-    ctx = {"user_id": user_id}
+def run_conversation(
+    user_id: str,
+    messages: list,
+    model: str = MODEL,
+    conversation_id: str | None = None,
+) -> dict:
+    conversation_id, ctx = _session_for(conversation_id, user_id)
     max_iterations = 10
     iteration = 0
     consecutive_non_retryable = 0
@@ -93,7 +122,7 @@ def run_conversation(user_id: str, messages: list, model: str = MODEL) -> dict:
 
         if response.stop_reason != "tool_use":
             reply = "".join(b.text for b in response.content if b.type == "text")
-            return {"reply": reply, "messages": messages}
+            return {"reply": reply, "messages": messages, "conversation_id": conversation_id}
 
         tool_results = []
 
@@ -153,9 +182,10 @@ def run_conversation(user_id: str, messages: list, model: str = MODEL) -> dict:
                 "I've encountered issues that cannot be resolved automatically. "
                 "Please escalate this to a human agent for further assistance."
             )
-            return {"reply": reply, "messages": messages}
+            return {"reply": reply, "messages": messages, "conversation_id": conversation_id}
 
     return {
         "reply": "I've reached the maximum number of tool calls. Please escalate this conversation to a human agent.",
         "messages": messages,
+        "conversation_id": conversation_id,
     }

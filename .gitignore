@@ -25,3 +25,5 @@ article/*
 
 # Claude Output
 Claude outputs/*
+backend/evals/run_evals.py
+backend/evals/run_evals.py
